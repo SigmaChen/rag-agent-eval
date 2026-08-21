@@ -1,0 +1,9 @@
+[
+  {
+    "id": "example-001",
+    "question": "What is the default max_tokens value for the Claude Messages API?",
+    "expected_answer": "There is no default max_tokens value; it is a required parameter that must be explicitly set in every request.",
+    "source_doc": "messages-api.md",
+    "tags": ["api-basics"]
+  }
+]

@@ -14,34 +14,42 @@ The core idea: building a RAG system is the easy part. Knowing whether it actual
 
 ## Architecture
 
-```
-┌─────────────┐     ┌──────────────┐     ┌──────────────┐
-│  Ingestion   │────▶│  Vector DB   │     │  Ground Truth │
-│  (docs→chunks)│    │  (ChromaDB)  │     │  (Q&A pairs)  │
-└─────────────┘     └──────┬───────┘     └──────┬───────┘
-                           │                     │
-                    ┌──────▼───────┐             │
-   question ──────▶│  Retrieval    │             │
-                    │  (top-k)     │             │
-                    └──────┬───────┘             │
-                           │                     │
-                    ┌──────▼───────┐             │
-                    │  Generation   │             │
-                    │  (Claude API) │             │
-                    └──────┬───────┘             │
-                           │                     │
-                    ┌──────▼───────┐    ┌───────▼───────┐
-                    │   Tracing     │◀──│  Evaluation    │
-                    │  (JSONL logs) │   │  (LLM judge)   │
-                    └──────────────┘   └───────────────┘
+```mermaid
+flowchart TD
+    subgraph Offline["Offline (one-time)"]
+        Docs["📄 Source Docs (.md)"]
+        Ingest["Ingestion\n(load → chunk → embed)"]
+        VDB[("ChromaDB\n(vector store)")]
+        Docs --> Ingest --> VDB
+    end
+
+    subgraph Online["Online (per query)"]
+        Q["❓ User Question"]
+        Ret["Retrieval\n(top-k similarity search)"]
+        Gen["Generation\n(LLM: Gemini / Claude)"]
+        Q --> Ret
+        VDB --> Ret
+        Ret -- "relevant chunks" --> Gen
+    end
+
+    subgraph Eval["Evaluation & Observability"]
+        GT["Ground Truth\n(Q&A pairs)"]
+        Ev["Evaluation\n(correctness · hallucination · relevance)"]
+        Trace["Tracing\n(JSONL logs)"]
+        GT --> Ev
+        Gen -- "answer" --> Ev
+        Ret -- "chunks" --> Ev
+        Gen --> Trace
+        Ev -- "scores" --> Trace
+    end
 ```
 
 ## Tech Stack
 
 | Component | Choice | Why |
 |-----------|--------|-----|
-| LLM (generation) | Claude Sonnet 5 (`claude-sonnet-5`) | Best cost/quality ratio for RAG generation |
-| LLM (eval judge) | Claude Haiku 4.5 (`claude-haiku-4-5`) | Fast & cheap for automated scoring |
+| LLM (generation) | Gemini 3.6 Flash (free) / Claude Sonnet 5 | Gemini for dev, Claude for production quality |
+| LLM (eval judge) | Gemini 3.6 Flash (free) / Claude Haiku 4.5 | Fast & cheap for automated scoring |
 | Embeddings | `all-MiniLM-L6-v2` (local) | No API dependency, good enough for demo |
 | Vector DB | ChromaDB | Simple, embedded, no infra needed |
 | Document processing | LangChain text splitters | Battle-tested chunking |
@@ -74,7 +82,7 @@ data/
 # Clone & setup
 git clone https://github.com/YOUR_USERNAME/rag-agent-eval.git
 cd rag-agent-eval
-cp .env.example .env   # Add your ANTHROPIC_API_KEY
+cp .env.example .env   # Add your GEMINI_API_KEY (free at https://aistudio.google.com/apikey)
 
 # Install
 pip install -e ".[dev]"
@@ -95,10 +103,6 @@ rag traces --limit 5
 ## Knowledge Base
 
 Default: [Anthropic Claude API documentation](https://docs.anthropic.com/). Configurable via `knowledge_base_source` in settings.
-
-## Roadmap
-
-See [ROADMAP.md](ROADMAP.md) for the detailed 4-week development plan.
 
 ## License
 

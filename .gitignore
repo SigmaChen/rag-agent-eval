@@ -41,4 +41,6 @@ data/eval_results/*
 
 # Development plans
 ROADMAP.md
+HANDOFF.md
+FUTURE_IDEAS.md
 CLAUDE.md

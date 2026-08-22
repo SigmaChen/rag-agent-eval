@@ -5,10 +5,11 @@ from rich.console import Console
 from rich.table import Table
 
 from .config import get_settings
-from .ingestion.loader import load_markdown_files
+from .ingestion.loader import load_documents
 from .ingestion.chunker import chunk_documents
 from .retrieval.store import get_collection, index_chunks, search
-from .generation.llm import generate_answer
+from .generation.llm import generate_answer, GenerationError
+from .eval.runner import run_evaluation
 from .tracing.schema import (
     TraceRecord, RetrievalRecord, ChunkRecord, GenerationRecord,
 )
@@ -23,9 +24,9 @@ def ingest(source: str = typer.Argument(help="Directory containing .md files")):
     """Ingest markdown documents into the knowledge base."""
     settings = get_settings()
     with console.status("Loading documents..."):
-        docs = load_markdown_files(source)
+        docs = load_documents(source)
     if not docs:
-        console.print(f"[red]No .md files found in {source}[/red]")
+        console.print(f"[red]No supported files found in {source}[/red]")
         raise typer.Exit(1)
     console.print(f"Loaded {len(docs)} document(s)")
 
@@ -72,13 +73,17 @@ def ask(question: str = typer.Argument(help="Question to ask the RAG agent")):
 
     with console.status("Generating answer..."):
         t0 = time.perf_counter()
-        result = generate_answer(
-            question, hits,
-            provider=settings.llm_provider,
-            model=settings.generation_model,
-            max_tokens=settings.max_tokens,
-            api_key=api_key or None,
-        )
+        try:
+            result = generate_answer(
+                question, hits,
+                provider=settings.llm_provider,
+                model=settings.generation_model,
+                max_tokens=settings.max_tokens,
+                api_key=api_key or None,
+            )
+        except GenerationError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
         gen_ms = (time.perf_counter() - t0) * 1000
 
     trace.generation = GenerationRecord(
@@ -106,7 +111,50 @@ def ask(question: str = typer.Argument(help="Question to ask the RAG agent")):
 @app.command()
 def evaluate():
     """Run evaluation suite against ground truth Q&A pairs."""
-    console.print("[yellow]Evaluation module not implemented yet — coming soon.[/yellow]")
+    settings = get_settings()
+    console.print(f"[dim]Eval model: {settings.eval_model}[/dim]")
+
+    with console.status("Running evaluation..."):
+        try:
+            output = run_evaluation(settings)
+        except GenerationError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
+        except RuntimeError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
+
+    results = output["results"]
+    summary = output["summary"]
+
+    if not results:
+        console.print("[yellow]No ground truth Q&A pairs found in data/ground_truth/qa_pairs.json[/yellow]")
+        return
+
+    table = Table(title="Evaluation Results")
+    table.add_column("ID", style="dim", width=14)
+    table.add_column("Question", max_width=30)
+    table.add_column("Correct", justify="right")
+    table.add_column("Halluc.", justify="right")
+    table.add_column("Relevance", justify="right")
+
+    for r in results:
+        table.add_row(
+            r["qa_id"],
+            r["question"][:30],
+            f"{r['correctness']:.2f}",
+            f"{r['hallucination']:.2f}",
+            f"{r['relevance']:.2f}",
+        )
+    console.print(table)
+
+    console.print()
+    console.print(
+        f"[bold]Summary ({summary['total_questions']} questions):[/bold]  "
+        f"correctness={summary['avg_correctness']:.2f}  "
+        f"hallucination={summary['avg_hallucination']:.2f}  "
+        f"relevance={summary['avg_relevance']:.2f}"
+    )
 
 
 @app.command()

@@ -1,5 +1,6 @@
 import anthropic
 from google import genai
+from google.genai import errors as genai_errors
 
 
 _SYSTEM_PROMPT = (
@@ -16,11 +17,73 @@ _USER_TEMPLATE = """Context (retrieved documents):
 Question: {question}"""
 
 
+class GenerationError(Exception):
+    """Raised when LLM generation fails in a way the caller should handle."""
+    pass
+
+
+def raw_generate(
+    prompt: str,
+    provider: str = "gemini",
+    model: str = "gemini-3.6-flash",
+    max_tokens: int = 1024,
+    api_key: str | None = None,
+) -> str:
+    """Send a prompt directly to the LLM without RAG context or system prompt.
+
+    Used by eval scorers where the prompt IS the full instruction.
+    """
+    if provider == "anthropic":
+        kwargs = {}
+        if api_key:
+            kwargs["api_key"] = api_key
+        try:
+            client = anthropic.Anthropic(**kwargs)
+        except TypeError as e:
+            if "authentication" in str(e).lower():
+                raise GenerationError("No Anthropic API key found.") from e
+            raise
+        try:
+            message = client.messages.create(
+                model=model, max_tokens=max_tokens,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        except anthropic.RateLimitError as e:
+            raise GenerationError("Anthropic rate limit hit.") from e
+        except anthropic.AuthenticationError as e:
+            raise GenerationError("Anthropic API key invalid.") from e
+        except anthropic.APIConnectionError as e:
+            raise GenerationError(f"Cannot connect to Anthropic API: {e}") from e
+        except anthropic.APIStatusError as e:
+            raise GenerationError(f"Anthropic API error ({e.status_code}): {e}") from e
+        return message.content[0].text
+
+    # Gemini
+    kwargs = {}
+    if api_key:
+        kwargs["api_key"] = api_key
+    client = genai.Client(**kwargs)
+    try:
+        response = client.models.generate_content(
+            model=model, contents=prompt,
+            config=genai.types.GenerateContentConfig(max_output_tokens=max_tokens),
+        )
+    except genai_errors.ClientError as e:
+        if e.code == 429:
+            raise GenerationError("Gemini rate limit hit.") from e
+        if e.code == 403:
+            raise GenerationError("Gemini API key invalid.") from e
+        raise GenerationError(f"Gemini API error: {e}") from e
+    except genai_errors.ServerError as e:
+        raise GenerationError(f"Gemini server error: {e}") from e
+    return response.text
+
+
 def generate_answer(
     question: str,
     chunks: list[dict],
     provider: str = "gemini",
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3.6-flash",
     max_tokens: int = 4096,
     api_key: str | None = None,
 ) -> dict:
@@ -42,14 +105,28 @@ def _generate_gemini(
     if api_key:
         kwargs["api_key"] = api_key
     client = genai.Client(**kwargs)
-    response = client.models.generate_content(
-        model=model,
-        contents=user_message,
-        config=genai.types.GenerateContentConfig(
-            system_instruction=_SYSTEM_PROMPT,
-            max_output_tokens=max_tokens,
-        ),
-    )
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=user_message,
+            config=genai.types.GenerateContentConfig(
+                system_instruction=_SYSTEM_PROMPT,
+                max_output_tokens=max_tokens,
+            ),
+        )
+    except genai_errors.ClientError as e:
+        if e.code == 429:
+            raise GenerationError(
+                "Gemini rate limit hit. Free tier allows ~15 requests/min. Wait and retry."
+            ) from e
+        if e.code == 403:
+            raise GenerationError(
+                "Gemini API key invalid or not authorized. Check GEMINI_API_KEY in .env"
+            ) from e
+        raise GenerationError(f"Gemini API error: {e}") from e
+    except genai_errors.ServerError as e:
+        raise GenerationError(f"Gemini server error (try again): {e}") from e
+
     return {
         "answer": response.text,
         "model": model,
@@ -64,13 +141,33 @@ def _generate_anthropic(
     kwargs = {}
     if api_key:
         kwargs["api_key"] = api_key
-    client = anthropic.Anthropic(**kwargs)
-    message = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_message}],
-    )
+    try:
+        client = anthropic.Anthropic(**kwargs)
+    except TypeError as e:
+        if "authentication" in str(e).lower():
+            raise GenerationError(
+                "No Anthropic API key found. Set ANTHROPIC_API_KEY in .env"
+            ) from e
+        raise
+
+    try:
+        message = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+        )
+    except anthropic.RateLimitError as e:
+        raise GenerationError("Anthropic rate limit hit. Wait and retry.") from e
+    except anthropic.AuthenticationError as e:
+        raise GenerationError(
+            "Anthropic API key invalid. Check ANTHROPIC_API_KEY in .env"
+        ) from e
+    except anthropic.APIConnectionError as e:
+        raise GenerationError(f"Cannot connect to Anthropic API: {e}") from e
+    except anthropic.APIStatusError as e:
+        raise GenerationError(f"Anthropic API error ({e.status_code}): {e}") from e
+
     return {
         "answer": message.content[0].text,
         "model": model,

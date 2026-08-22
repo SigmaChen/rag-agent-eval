@@ -1,6 +1,14 @@
+import logging
+import time
+
 import anthropic
 from google import genai
 from google.genai import errors as genai_errors
+
+logger = logging.getLogger(__name__)
+
+_MAX_RETRIES = 3
+_INITIAL_BACKOFF = 10
 
 
 _SYSTEM_PROMPT = (
@@ -22,6 +30,19 @@ class GenerationError(Exception):
     pass
 
 
+def _call_with_retry(fn, max_retries=_MAX_RETRIES, initial_backoff=_INITIAL_BACKOFF):
+    """Retry fn() with exponential backoff on rate-limit errors."""
+    for attempt in range(max_retries + 1):
+        try:
+            return fn()
+        except GenerationError as e:
+            if "rate limit" not in str(e).lower() or attempt == max_retries:
+                raise
+            wait = initial_backoff * (2 ** attempt)
+            logger.warning("Rate limited, retrying in %ds (attempt %d/%d)", wait, attempt + 1, max_retries)
+            time.sleep(wait)
+
+
 def raw_generate(
     prompt: str,
     provider: str = "gemini",
@@ -32,7 +53,14 @@ def raw_generate(
     """Send a prompt directly to the LLM without RAG context or system prompt.
 
     Used by eval scorers where the prompt IS the full instruction.
+    Retries automatically on rate-limit errors with exponential backoff.
     """
+    def _call():
+        return _raw_generate_once(prompt, provider, model, max_tokens, api_key)
+    return _call_with_retry(_call)
+
+
+def _raw_generate_once(prompt, provider, model, max_tokens, api_key):
     if provider == "anthropic":
         kwargs = {}
         if api_key:
@@ -87,15 +115,21 @@ def generate_answer(
     max_tokens: int = 4096,
     api_key: str | None = None,
 ) -> dict:
-    """Generate an answer using the configured LLM provider."""
+    """Generate an answer using the configured LLM provider.
+
+    Retries automatically on rate-limit errors with exponential backoff.
+    """
     context = "\n\n".join(
         f"[Source: {c['source']}]\n{c['text']}" for c in chunks
     )
     user_message = _USER_TEMPLATE.format(context=context, question=question)
 
-    if provider == "anthropic":
-        return _generate_anthropic(user_message, model, max_tokens, api_key)
-    return _generate_gemini(user_message, model, max_tokens, api_key)
+    def _call():
+        if provider == "anthropic":
+            return _generate_anthropic(user_message, model, max_tokens, api_key)
+        return _generate_gemini(user_message, model, max_tokens, api_key)
+
+    return _call_with_retry(_call)
 
 
 def _generate_gemini(

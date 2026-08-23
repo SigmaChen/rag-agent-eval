@@ -46,7 +46,7 @@ def _call_with_retry(fn, max_retries=_MAX_RETRIES, initial_backoff=_INITIAL_BACK
 def raw_generate(
     prompt: str,
     provider: str = "gemini",
-    model: str = "gemini-3.6-flash",
+    model: str = "gemini-3.7-flash",
     max_tokens: int = 1024,
     api_key: str | None = None,
 ) -> str:
@@ -111,7 +111,7 @@ def generate_answer(
     question: str,
     chunks: list[dict],
     provider: str = "gemini",
-    model: str = "gemini-3.6-flash",
+    model: str = "gemini-3.7-flash",
     max_tokens: int = 4096,
     api_key: str | None = None,
 ) -> dict:

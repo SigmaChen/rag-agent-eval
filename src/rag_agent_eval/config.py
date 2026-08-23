@@ -10,8 +10,8 @@ class Settings(BaseSettings):
 
     # Gemini (free tier)
     gemini_api_key: str = ""
-    generation_model_gemini: str = "gemini-3.6-flash"
-    eval_model_gemini: str = "gemini-3.6-flash"
+    generation_model_gemini: str = "gemini-3.7-flash"
+    eval_model_gemini: str = "gemini-3.5-flash-lite"
 
     # Anthropic
     anthropic_api_key: str = ""

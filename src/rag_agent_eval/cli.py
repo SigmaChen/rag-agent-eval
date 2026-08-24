@@ -5,18 +5,25 @@ from rich.console import Console
 from rich.table import Table
 
 from .config import get_settings
-from .ingestion.loader import load_documents
-from .ingestion.chunker import chunk_documents
-from .retrieval.store import get_collection, index_chunks, search
-from .generation.llm import generate_answer, GenerationError
 from .eval.runner import run_evaluation
+from .generation.llm import GenerationError, generate_answer
+from .ingestion.chunker import chunk_documents
+from .ingestion.loader import load_documents
+from .retrieval.store import get_collection, index_chunks, search
+from .tracing.logger import load_traces, save_trace
 from .tracing.schema import (
-    TraceRecord, RetrievalRecord, ChunkRecord, GenerationRecord,
+    ChunkRecord,
+    GenerationRecord,
+    RetrievalRecord,
+    TraceRecord,
 )
-from .tracing.logger import save_trace, load_traces
 
 app = typer.Typer(help="RAG Agent with Eval & Observability")
 console = Console()
+
+
+def _format_score(score: float | None) -> str:
+    return "N/A" if score is None else f"{score:.2f}"
 
 
 @app.command()
@@ -128,7 +135,10 @@ def evaluate():
     summary = output["summary"]
 
     if not results:
-        console.print("[yellow]No ground truth Q&A pairs found in data/ground_truth/qa_pairs.json[/yellow]")
+        console.print(
+            "[yellow]No ground truth Q&A pairs found in "
+            "data/ground_truth/qa_pairs.json[/yellow]"
+        )
         return
 
     table = Table(title="Evaluation Results")
@@ -142,18 +152,19 @@ def evaluate():
         table.add_row(
             r["qa_id"],
             r["question"][:30],
-            f"{r['correctness']:.2f}",
-            f"{r['hallucination']:.2f}",
-            f"{r['relevance']:.2f}",
+            _format_score(r["correctness"]),
+            _format_score(r["hallucination"]),
+            _format_score(r["relevance"]),
         )
     console.print(table)
 
     console.print()
     console.print(
         f"[bold]Summary ({summary['total_questions']} questions):[/bold]  "
-        f"correctness={summary['avg_correctness']:.2f}  "
-        f"hallucination={summary['avg_hallucination']:.2f}  "
-        f"relevance={summary['avg_relevance']:.2f}"
+        f"correctness={_format_score(summary['avg_correctness'])}  "
+        f"hallucination={_format_score(summary['avg_hallucination'])}  "
+        f"relevance={_format_score(summary['avg_relevance'])}  "
+        f"failed={summary['failed_evaluations']}"
     )
 
 

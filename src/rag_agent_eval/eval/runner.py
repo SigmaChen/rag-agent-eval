@@ -3,12 +3,16 @@ import time
 from pathlib import Path
 
 from ..config import Settings
+from ..generation.llm import generate_answer, raw_generate
 from ..retrieval.store import get_collection, search
-from ..generation.llm import generate_answer, raw_generate, GenerationError
-from ..tracing.schema import (
-    TraceRecord, RetrievalRecord, ChunkRecord, GenerationRecord, EvalRecord,
-)
 from ..tracing.logger import save_trace
+from ..tracing.schema import (
+    ChunkRecord,
+    EvalRecord,
+    GenerationRecord,
+    RetrievalRecord,
+    TraceRecord,
+)
 from .correctness import score_correctness
 from .hallucination import score_hallucination
 from .retrieval_relevance import score_retrieval_relevance
@@ -132,8 +136,13 @@ def _evaluate_single(
             eval_model=settings.eval_model,
             details={
                 "correctness_reasoning": correctness["reasoning"],
+                "correctness_status": correctness["status"],
+                "correctness_raw_response": correctness.get("raw_response"),
                 "hallucination_reasoning": hallucination["reasoning"],
+                "hallucination_status": hallucination["status"],
+                "hallucination_raw_response": hallucination.get("raw_response"),
                 "relevance_per_chunk": relevance["per_chunk"],
+                "relevance_status": relevance["status"],
             },
         ),
         metadata={"qa_id": qa.get("id", ""), "tags": qa.get("tags", [])},
@@ -152,13 +161,23 @@ def _evaluate_single(
 
 
 def _compute_summary(results: list[dict]) -> dict:
-    """Average scores across all evaluated Q&A pairs."""
+    """Average valid scores and report evaluator parse failures."""
     if not results:
         return {}
-    n = len(results)
+
+    def average(metric: str) -> float | None:
+        scores = [result[metric] for result in results if result[metric] is not None]
+        if not scores:
+            return None
+        return round(sum(scores) / len(scores), 3)
+
+    metrics = ("correctness", "hallucination", "relevance")
     return {
-        "total_questions": n,
-        "avg_correctness": round(sum(r["correctness"] for r in results) / n, 3),
-        "avg_hallucination": round(sum(r["hallucination"] for r in results) / n, 3),
-        "avg_relevance": round(sum(r["relevance"] for r in results) / n, 3),
+        "total_questions": len(results),
+        "avg_correctness": average("correctness"),
+        "avg_hallucination": average("hallucination"),
+        "avg_relevance": average("relevance"),
+        "failed_evaluations": sum(
+            result[metric] is None for result in results for metric in metrics
+        ),
     }

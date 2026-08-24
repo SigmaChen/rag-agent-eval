@@ -1,6 +1,5 @@
 from rag_agent_eval.eval.retrieval_relevance import score_retrieval_relevance
 
-
 SAMPLE_CHUNKS = [
     {"chunk_id": "doc::0", "text": "Use streaming for real-time response display."},
     {"chunk_id": "doc::1", "text": "Claude pricing varies by model tier."},
@@ -78,3 +77,20 @@ class TestScoreRetrievalRelevance:
         )
         ids = [c["chunk_id"] for c in result["per_chunk"]]
         assert ids == ["doc::0", "doc::1", "doc::2"]
+
+    def test_parse_failures_are_excluded_from_average(self):
+        responses = iter([
+            '{"reasoning": "Relevant.", "score": 0.8}',
+            "The score is probably 0.2.",
+            '{"reasoning": "Relevant.", "score": 0.6}',
+        ])
+
+        result = score_retrieval_relevance(
+            question="test",
+            chunks=SAMPLE_CHUNKS,
+            generate_fn=lambda prompt: next(responses),
+        )
+
+        assert result["score"] == 0.7
+        assert result["status"] == "partial_error"
+        assert result["per_chunk"][1]["score"] is None

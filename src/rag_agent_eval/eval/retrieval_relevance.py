@@ -1,6 +1,4 @@
-import json
-import re
-
+from .parsing import parse_judge_response
 
 _JUDGE_PROMPT = """You are an impartial judge evaluating search result quality.
 
@@ -15,7 +13,8 @@ Scoring criteria:
 - 0.0: Completely irrelevant to the question.
 
 Respond in this exact JSON format (no other text):
-{{"reasoning": "<why this chunk is or isn't relevant, in 1-2 sentences>", "score": <float between 0.0 and 1.0>}}
+{{"reasoning": "<explain relevance in 1-2 sentences>",
+"score": <float between 0.0 and 1.0>}}
 
 Question: {question}
 
@@ -38,7 +37,7 @@ def score_retrieval_relevance(
         {"score": float, "per_chunk": [{"chunk_id": str, "score": float, "reasoning": str}]}
     """
     if not chunks:
-        return {"score": 0.0, "per_chunk": []}
+        return {"score": 0.0, "per_chunk": [], "status": "success"}
 
     per_chunk = []
     for chunk in chunks:
@@ -52,28 +51,19 @@ def score_retrieval_relevance(
             "chunk_id": chunk.get("chunk_id", ""),
             "score": parsed["score"],
             "reasoning": parsed["reasoning"],
+            "status": parsed["status"],
+            "raw_response": parsed.get("raw_response"),
         })
 
-    avg_score = sum(c["score"] for c in per_chunk) / len(per_chunk)
-    return {"score": round(avg_score, 3), "per_chunk": per_chunk}
+    valid_scores = [c["score"] for c in per_chunk if c["score"] is not None]
+    if not valid_scores:
+        return {"score": None, "per_chunk": per_chunk, "status": "parse_error"}
+
+    avg_score = sum(valid_scores) / len(valid_scores)
+    status = "success" if len(valid_scores) == len(per_chunk) else "partial_error"
+    return {"score": round(avg_score, 3), "per_chunk": per_chunk, "status": status}
 
 
 def _parse_judge_response(raw: str) -> dict:
     """Extract score and reasoning from judge LLM response."""
-    try:
-        parsed = json.loads(raw)
-        score = float(parsed["score"])
-        score = max(0.0, min(1.0, score))
-        return {"score": score, "reasoning": parsed.get("reasoning", "")}
-    except (json.JSONDecodeError, KeyError, ValueError):
-        pass
-
-    match = re.search(r"(\d+\.?\d*)", raw)
-    if match:
-        score = float(match.group(1))
-        if score > 1.0:
-            score = score / 10.0 if score <= 10.0 else score / 100.0
-        score = max(0.0, min(1.0, score))
-        return {"score": score, "reasoning": f"(parsed from raw response) {raw[:200]}"}
-
-    return {"score": 0.0, "reasoning": f"(failed to parse) {raw[:200]}"}
+    return parse_judge_response(raw)

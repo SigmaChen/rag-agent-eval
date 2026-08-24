@@ -1,9 +1,7 @@
-from unittest.mock import patch, MagicMock
 
 from rag_agent_eval.eval.runner import (
-    load_ground_truth,
     _compute_summary,
-    make_generate_fn,
+    load_ground_truth,
 )
 
 
@@ -32,6 +30,7 @@ class TestComputeSummary:
         assert summary["avg_correctness"] == 0.7
         assert summary["avg_hallucination"] == 0.2
         assert summary["avg_relevance"] == 0.8
+        assert summary["failed_evaluations"] == 0
 
     def test_single_result(self):
         results = [
@@ -44,3 +43,16 @@ class TestComputeSummary:
     def test_empty_results(self):
         summary = _compute_summary([])
         assert summary == {}
+
+    def test_ignores_parse_failures_and_counts_them(self):
+        results = [
+            {"correctness": 0.8, "hallucination": None, "relevance": 0.9},
+            {"correctness": None, "hallucination": None, "relevance": 0.7},
+        ]
+
+        summary = _compute_summary(results)
+
+        assert summary["avg_correctness"] == 0.8
+        assert summary["avg_hallucination"] is None
+        assert summary["avg_relevance"] == 0.8
+        assert summary["failed_evaluations"] == 3

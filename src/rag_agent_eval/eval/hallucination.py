@@ -1,8 +1,7 @@
-import json
-import re
+from .parsing import parse_judge_response
 
-
-_JUDGE_PROMPT = """You are an impartial judge checking whether an AI answer is grounded in the provided context.
+_JUDGE_PROMPT = """You are an impartial judge checking whether an AI answer is
+grounded in the provided context.
 
 Your task: determine if the answer contains claims that are NOT supported by the context.
 This is NOT about whether the answer is correct — it's about whether the answer stays
@@ -18,7 +17,8 @@ Scoring criteria:
 An answer that says "I don't have enough information" should score 0.0 (no hallucination).
 
 Respond in this exact JSON format (no other text):
-{{"reasoning": "<identify which claims are/aren't grounded, in 2-3 sentences>", "score": <float between 0.0 and 1.0>}}
+{{"reasoning": "<identify grounded and ungrounded claims in 2-3 sentences>",
+"score": <float between 0.0 and 1.0>}}
 
 Context (retrieved documents):
 ---
@@ -51,20 +51,4 @@ def score_hallucination(
 
 def _parse_judge_response(raw: str) -> dict:
     """Extract score and reasoning from judge LLM response."""
-    try:
-        parsed = json.loads(raw)
-        score = float(parsed["score"])
-        score = max(0.0, min(1.0, score))
-        return {"score": score, "reasoning": parsed.get("reasoning", "")}
-    except (json.JSONDecodeError, KeyError, ValueError):
-        pass
-
-    match = re.search(r"(\d+\.?\d*)", raw)
-    if match:
-        score = float(match.group(1))
-        if score > 1.0:
-            score = score / 10.0 if score <= 10.0 else score / 100.0
-        score = max(0.0, min(1.0, score))
-        return {"score": score, "reasoning": f"(parsed from raw response) {raw[:200]}"}
-
-    return {"score": 0.0, "reasoning": f"(failed to parse) {raw[:200]}"}
+    return parse_judge_response(raw)

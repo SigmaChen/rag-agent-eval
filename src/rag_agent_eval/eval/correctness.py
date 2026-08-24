@@ -1,8 +1,4 @@
-import json
-import re
-
-from ..generation.llm import GenerationError
-
+from .parsing import parse_judge_response
 
 _JUDGE_PROMPT = """You are an impartial judge evaluating the quality of an AI assistant's answer.
 
@@ -51,21 +47,4 @@ def score_correctness(
 
 def _parse_judge_response(raw: str) -> dict:
     """Extract score and reasoning from judge LLM response."""
-    try:
-        parsed = json.loads(raw)
-        score = float(parsed["score"])
-        score = max(0.0, min(1.0, score))
-        return {"score": score, "reasoning": parsed.get("reasoning", "")}
-    except (json.JSONDecodeError, KeyError, ValueError):
-        pass
-
-    # Fallback: try to find a number in the response
-    match = re.search(r"(\d+\.?\d*)", raw)
-    if match:
-        score = float(match.group(1))
-        if score > 1.0:
-            score = score / 10.0 if score <= 10.0 else score / 100.0
-        score = max(0.0, min(1.0, score))
-        return {"score": score, "reasoning": f"(parsed from raw response) {raw[:200]}"}
-
-    return {"score": 0.0, "reasoning": f"(failed to parse) {raw[:200]}"}
+    return parse_judge_response(raw)

@@ -1,5 +1,4 @@
-from rag_agent_eval.eval.hallucination import score_hallucination, _parse_judge_response
-
+from rag_agent_eval.eval.hallucination import _parse_judge_response, score_hallucination
 
 SAMPLE_CHUNKS = [
     {"source": "api-docs.md", "text": "max_tokens is a required parameter."},
@@ -14,22 +13,27 @@ class TestParseJudgeResponse:
         result = _parse_judge_response(raw)
         assert result["score"] == 0.0
 
-    def test_score_clamped(self):
+    def test_invalid_score_is_not_reported_as_grounded(self):
         raw = '{"reasoning": "Bad.", "score": 1.5}'
         result = _parse_judge_response(raw)
-        assert result["score"] == 1.0
+        assert result["score"] is None
+        assert result["status"] == "parse_error"
 
     def test_unparseable(self):
         raw = "No score here."
         result = _parse_judge_response(raw)
-        assert result["score"] == 0.0
+        assert result["score"] is None
+        assert result["status"] == "parse_error"
 
 
 class TestScoreHallucination:
 
     def test_grounded_answer_scores_low(self):
         def mock_llm(prompt: str) -> str:
-            return '{"reasoning": "Answer only mentions max_tokens being required, which is in context.", "score": 0.0}'
+            return (
+                '{"reasoning": "The answer is supported by context.", '
+                '"score": 0.0}'
+            )
 
         result = score_hallucination(
             answer="max_tokens is required in every request.",
@@ -40,7 +44,10 @@ class TestScoreHallucination:
 
     def test_hallucinated_answer_scores_high(self):
         def mock_llm(prompt: str) -> str:
-            return '{"reasoning": "Answer claims default is 4096, which is not in the context.", "score": 0.8}'
+            return (
+                '{"reasoning": "The claimed default is not in context.", '
+                '"score": 0.8}'
+            )
 
         result = score_hallucination(
             answer="max_tokens defaults to 4096 if not set.",
@@ -69,7 +76,10 @@ class TestScoreHallucination:
     def test_idk_answer_scores_zero(self):
         """An answer admitting insufficient info should not be penalized."""
         def mock_llm(prompt: str) -> str:
-            return '{"reasoning": "Answer says it does not have enough information. No hallucination.", "score": 0.0}'
+            return (
+                '{"reasoning": "The answer admits insufficient information.", '
+                '"score": 0.0}'
+            )
 
         result = score_hallucination(
             answer="I don't have enough information to answer this.",

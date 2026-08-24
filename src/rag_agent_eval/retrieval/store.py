@@ -1,7 +1,6 @@
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
-
 _COLLECTION_NAME = "rag_knowledge_base"
 
 
@@ -15,9 +14,18 @@ def get_collection(
 
 
 def index_chunks(chunks: list[dict], collection: chromadb.Collection) -> int:
-    """Upsert chunks into the vector store. Returns count indexed."""
+    """Replace indexed content for each source and return the chunk count.
+
+    Removing a source's existing chunks before the upsert prevents stale chunks
+    from surviving when a document becomes shorter or its chunking changes.
+    """
     if not chunks:
         return 0
+
+    sources = {chunk["source"] for chunk in chunks}
+    for source in sources:
+        collection.delete(where={"source": source})
+
     collection.upsert(
         ids=[c["chunk_id"] for c in chunks],
         documents=[c["text"] for c in chunks],

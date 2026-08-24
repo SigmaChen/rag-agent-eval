@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 _SUPPORTED_EXTENSIONS = {".md"}
 
 

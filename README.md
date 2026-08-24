@@ -1,16 +1,16 @@
 # RAG Agent with Eval & Observability
 
-A RAG-based Q&A agent built on Anthropic Claude, designed to demonstrate **production-grade evaluation and observability** — not just the RAG pipeline itself.
+A small, end-to-end RAG Q&A project built to demonstrate practical evaluation and observability—not just answer generation.
 
 The core idea: building a RAG system is the easy part. Knowing whether it actually works — detecting hallucinations, measuring retrieval quality, and tracing every step — is the hard part. This project tackles that head-on.
 
 ## What This Project Demonstrates
 
-1. **Automated Answer Evaluation** — Run a ground-truth Q&A test suite to score correctness, with LLM-as-judge and exact-match metrics
+1. **Automated Answer Evaluation** — Run a ground-truth Q&A test suite with an LLM-as-judge correctness score
 2. **Hallucination Detection** — Check whether the generated answer stays within the scope of retrieved documents
 3. **Retrieval Quality Assessment** — Measure whether the chunks pulled from the vector store are actually relevant to the question
 4. **End-to-End Tracing** — Every query produces a structured trace: retrieval → prompt construction → generation → eval results, stored as append-only JSONL
-5. **Multi-Model Routing** — Compare responses across providers (Claude + Azure OpenAI) for cost/quality tradeoffs
+5. **Provider Routing** — Use Gemini for low-cost development or Anthropic Claude for generation and evaluation
 
 ## Architecture
 
@@ -48,8 +48,8 @@ flowchart TD
 
 | Component | Choice | Why |
 |-----------|--------|-----|
-| LLM (generation) | Gemini 3.6 Flash (free) / Claude Sonnet 5 | Gemini for dev, Claude for production quality |
-| LLM (eval judge) | Gemini 3.6 Flash (free) / Claude Haiku 4.5 | Fast & cheap for automated scoring |
+| LLM (generation) | Gemini 3.7 Flash / Claude Sonnet 5 | Selectable provider and generation model |
+| LLM (eval judge) | Gemini 3.5 Flash Lite / Claude Haiku 4.5 | Separate, lower-cost judge model |
 | Embeddings | `all-MiniLM-L6-v2` (local) | No API dependency, good enough for demo |
 | Vector DB | ChromaDB | Simple, embedded, no infra needed |
 | Document processing | LangChain text splitters | Battle-tested chunking |
@@ -61,7 +61,7 @@ flowchart TD
 ```
 src/rag_agent_eval/
 ├── ingestion/       # Document loading, chunking, embedding, indexing
-├── retrieval/       # Vector search, reranking
+├── retrieval/       # ChromaDB vector search
 ├── generation/      # LLM prompt construction & response generation
 ├── eval/            # Answer correctness, hallucination, retrieval quality
 ├── tracing/         # Structured trace records (JSONL), trace viewer
@@ -73,7 +73,6 @@ data/
 ├── vectordb/        # ChromaDB persistent storage
 ├── ground_truth/    # Q&A test pairs for evaluation
 ├── traces/          # Query trace logs (JSONL)
-└── eval_results/    # Evaluation run outputs
 ```
 
 ## Quick Start
@@ -100,9 +99,30 @@ rag evaluate
 rag traces --limit 5
 ```
 
+## Testing
+
+```bash
+pytest
+ruff check .
+```
+
+Unit tests use injected fake judge functions and do not call external LLM APIs. Running
+`rag ask` and `rag evaluate` requires a valid provider API key; evaluation results are
+recorded in the JSONL trace log.
+
 ## Knowledge Base
 
-Default: [Anthropic Claude API documentation](https://docs.anthropic.com/). Configurable via `knowledge_base_source` in settings.
+The included example knowledge base contains a small Markdown introduction to the Claude API.
+Replace or extend the files under `data/raw/`, then run `rag ingest` again.
+
+## Limitations and Production Path
+
+This repository is intentionally a local CLI demo. It does not implement a web service,
+authentication, deployment, concurrent-safe trace storage, or comprehensive prompt-injection
+defenses. Source replacement prevents stale chunks when a document is re-ingested, but deleting
+an entire source file does not yet remove its indexed chunks. A production system would use
+versioned vector indexes with atomic cutover, durable observability storage, a larger versioned
+evaluation dataset, and explicit security and privacy controls.
 
 ## License
 

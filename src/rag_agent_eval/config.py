@@ -1,12 +1,14 @@
-from pydantic_settings import BaseSettings
+from typing import Literal
+
 from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     # LLM provider: "gemini" (free) or "anthropic"
-    llm_provider: str = "gemini"
+    llm_provider: Literal["gemini", "anthropic"] = "gemini"
 
     # Gemini (free tier)
     gemini_api_key: str = ""
@@ -21,18 +23,16 @@ class Settings(BaseSettings):
     max_tokens: int = 4096
 
     # RAG
-    chunk_size: int = 512
-    chunk_overlap: int = 50
-    top_k: int = 5
+    chunk_size: int = Field(default=512, gt=0, validation_alias="RAG_CHUNK_SIZE")
+    chunk_overlap: int = Field(
+        default=50, ge=0, validation_alias="RAG_CHUNK_OVERLAP"
+    )
+    top_k: int = Field(default=5, gt=0, validation_alias="RAG_TOP_K")
     embedding_model: str = "all-MiniLM-L6-v2"
     vectordb_path: str = "data/vectordb"
 
-    # Knowledge base
-    knowledge_base_source: str = "anthropic-docs"
-
     # Tracing
     trace_output_dir: str = "data/traces"
-    eval_output_dir: str = "data/eval_results"
 
     @property
     def generation_model(self) -> str:

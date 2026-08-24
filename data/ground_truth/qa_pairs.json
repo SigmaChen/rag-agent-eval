@@ -3,7 +3,35 @@
     "id": "example-001",
     "question": "What is the default max_tokens value for the Claude Messages API?",
     "expected_answer": "There is no default max_tokens value; it is a required parameter that must be explicitly set in every request.",
-    "source_doc": "messages-api.md",
+    "source_doc": "claude-api-basics.md",
     "tags": ["api-basics"]
+  },
+  {
+    "id": "example-002",
+    "question": "Which endpoint does the Claude Messages API use?",
+    "expected_answer": "The Messages API uses the POST /v1/messages endpoint.",
+    "source_doc": "claude-api-basics.md",
+    "tags": ["api-basics"]
+  },
+  {
+    "id": "example-003",
+    "question": "How can an application stream a Claude response?",
+    "expected_answer": "Use client.messages.stream and iterate over stream.text_stream to display response text incrementally.",
+    "source_doc": "claude-api-basics.md",
+    "tags": ["streaming"]
+  },
+  {
+    "id": "example-004",
+    "question": "What happens when Claude decides to use a tool?",
+    "expected_answer": "The response has a tool_use stop reason and a tool_use content block containing the tool name and input. The application executes the function and sends the result back.",
+    "source_doc": "claude-api-basics.md",
+    "tags": ["tool-use"]
+  },
+  {
+    "id": "example-005",
+    "question": "Which fields are included in Claude API usage information?",
+    "expected_answer": "The usage information contains input_tokens and output_tokens.",
+    "source_doc": "claude-api-basics.md",
+    "tags": ["api-basics", "usage"]
   }
 ]

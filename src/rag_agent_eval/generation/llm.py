@@ -39,7 +39,12 @@ def _call_with_retry(fn, max_retries=_MAX_RETRIES, initial_backoff=_INITIAL_BACK
             if "rate limit" not in str(e).lower() or attempt == max_retries:
                 raise
             wait = initial_backoff * (2 ** attempt)
-            logger.warning("Rate limited, retrying in %ds (attempt %d/%d)", wait, attempt + 1, max_retries)
+            logger.warning(
+                "Rate limited, retrying in %ds (attempt %d/%d)",
+                wait,
+                attempt + 1,
+                max_retries,
+            )
             time.sleep(wait)
 
 

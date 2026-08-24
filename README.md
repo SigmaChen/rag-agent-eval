@@ -15,33 +15,55 @@ The core idea: building a RAG system is the easy part. Knowing whether it actual
 ## Architecture
 
 ```mermaid
-flowchart TD
-    subgraph Offline["Offline (one-time)"]
-        Docs["📄 Source Docs (.md)"]
-        Ingest["Ingestion\n(load → chunk → embed)"]
-        VDB[("ChromaDB\n(vector store)")]
-        Docs --> Ingest --> VDB
+flowchart LR
+    subgraph PREP["1 · Knowledge Preparation"]
+        direction TB
+        DOCS["Source documents<br/>Markdown"]
+        CHUNK["Load & chunk<br/>overlapping passages"]
+        EMBED["Embed locally<br/>all-MiniLM-L6-v2"]
+        VDB[("ChromaDB<br/>persistent vector index")]
+
+        DOCS --> CHUNK --> EMBED --> VDB
     end
 
-    subgraph Online["Online (per query)"]
-        Q["❓ User Question"]
-        Ret["Retrieval\n(top-k similarity search)"]
-        Gen["Generation\n(LLM: Gemini / Claude)"]
-        Q --> Ret
-        VDB --> Ret
-        Ret -- "relevant chunks" --> Gen
+    subgraph RAG["2 · RAG Answering"]
+        direction TB
+        QUESTION["User question"]
+        RETRIEVE["Top-k retrieval"]
+        GENERATE["Grounded generation<br/>Gemini or Claude"]
+        ANSWER["Answer"]
+
+        QUESTION --> RETRIEVE
+        GENERATE --> ANSWER
     end
 
-    subgraph Eval["Evaluation & Observability"]
-        GT["Ground Truth\n(Q&A pairs)"]
-        Ev["Evaluation\n(correctness · hallucination · relevance)"]
-        Trace["Tracing\n(JSONL logs)"]
-        GT --> Ev
-        Gen -- "answer" --> Ev
-        Ret -- "chunks" --> Ev
-        Gen --> Trace
-        Ev -- "scores" --> Trace
+    subgraph QUALITY["3 · Evaluation & Observability"]
+        direction TB
+        GROUND_TRUTH["Ground-truth Q&A"]
+        JUDGES["LLM judges<br/>correctness · hallucination · relevance"]
+        TRACE[("JSONL traces<br/>chunks · timing · tokens · scores")]
+
+        GROUND_TRUTH --> JUDGES --> TRACE
     end
+
+    VDB --> RETRIEVE
+    RETRIEVE -. "retrieved chunks" .-> GENERATE
+    RETRIEVE -. "chunks" .-> JUDGES
+    ANSWER --> JUDGES
+    RETRIEVE --> TRACE
+    ANSWER --> TRACE
+
+    classDef source fill:#EEF2FF,stroke:#4F46E5,color:#1E1B4B,stroke-width:1.5px;
+    classDef process fill:#ECFDF5,stroke:#059669,color:#064E3B,stroke-width:1.5px;
+    classDef model fill:#FFF7ED,stroke:#EA580C,color:#7C2D12,stroke-width:1.5px;
+    classDef store fill:#F5F3FF,stroke:#7C3AED,color:#4C1D95,stroke-width:2px;
+    classDef output fill:#FDF2F8,stroke:#DB2777,color:#831843,stroke-width:1.5px;
+
+    class DOCS,QUESTION,GROUND_TRUTH source;
+    class CHUNK,EMBED,RETRIEVE,JUDGES process;
+    class GENERATE model;
+    class VDB,TRACE store;
+    class ANSWER output;
 ```
 
 ## Tech Stack
@@ -79,7 +101,7 @@ data/
 
 ```bash
 # Clone & setup
-git clone https://github.com/YOUR_USERNAME/rag-agent-eval.git
+git clone https://github.com/SigmaChen/rag-agent-eval.git
 cd rag-agent-eval
 cp .env.example .env   # Add your GEMINI_API_KEY (free at https://aistudio.google.com/apikey)
 

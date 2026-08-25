@@ -15,7 +15,7 @@ The core idea: building a RAG system is the easy part. Knowing whether it actual
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph PREP["1 · Knowledge Preparation"]
         direction TB
         DOCS["Source documents<br/>Markdown"]
